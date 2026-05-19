@@ -147,7 +147,10 @@ IFS=$'\t' read -r MODEL DIR PCT CTX COST EFF HAS_RL U5 U7 R5 R7 < <(
     (.rate_limits.seven_day.resets_at//0)]|@tsv' <<<"$input"
 )
 # Per-project quota cache so different providers (e.g. Max vs Foundry) don't share stale data.
-[[ "$CACHE_OK" == "1" ]] && QC="${_CD}/claude-sl-quota-$(printf '%s' "$DIR" | { shasum 2>/dev/null || sha1sum; } | cut -c1-16)"
+if [[ "$CACHE_OK" == "1" ]]; then
+  _HASH=$(printf '%s' "$DIR" | { shasum 2>/dev/null || sha1sum 2>/dev/null; } | cut -c1-16)
+  [[ -n "$_HASH" ]] && QC="${_CD}/claude-sl-quota-${_HASH}"
+fi
 case "${EFF:-default}" in low) EF='low' ;; high) EF='high' ;; xhigh) EF='xhigh' ;; max) EF='max' ;; *) EF='medium' ;; esac
 
 # ── Context label (needed by MODEL_SHORT and line 2) ──

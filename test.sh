@@ -118,8 +118,8 @@ git_cache_path_for_dir() {
 }
 
 quota_cache_path_for_root() {
-  local cache_root="$1"
-  printf '%s/claude-sl-quota\n' "$cache_root"
+  local cache_root="$1" dir="${2:-$PWD}"
+  printf '%s/claude-sl-quota-%s\n' "$cache_root" "$(_hash_dir "$dir")"
 }
 
 run_without_safe_cache_root() {
