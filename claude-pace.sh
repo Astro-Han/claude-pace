@@ -123,7 +123,6 @@ for _BASE in "${XDG_RUNTIME_DIR:-}" "${HOME}/.cache"; do
   break
 done
 QC=""
-[[ "$CACHE_OK" == "1" ]] && QC="${_CD}/claude-sl-quota"
 # Returns true (exit 0) when file is missing or older than $2 seconds.
 _stale() { [ ! -f "$1" ] || [ $((NOW - $(stat -f%m "$1" 2>/dev/null || stat -c%Y "$1" 2>/dev/null || echo 0))) -gt "$2" ]; }
 
@@ -147,6 +146,8 @@ IFS=$'\t' read -r MODEL DIR PCT CTX COST EFF HAS_RL U5 U7 R5 R7 < <(
     (.rate_limits.five_hour.resets_at//0),
     (.rate_limits.seven_day.resets_at//0)]|@tsv' <<<"$input"
 )
+# Per-project quota cache so different providers (e.g. Max vs Foundry) don't share stale data.
+[[ "$CACHE_OK" == "1" ]] && QC="${_CD}/claude-sl-quota-$(printf '%s' "$DIR" | { shasum 2>/dev/null || sha1sum; } | cut -c1-16)"
 case "${EFF:-default}" in low) EF='low' ;; high) EF='high' ;; xhigh) EF='xhigh' ;; max) EF='max' ;; *) EF='medium' ;; esac
 
 # ── Context label (needed by MODEL_SHORT and line 2) ──
