@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.2
+
+- Fix the auto-compact bar briefly showing the model's full window (e.g. `0% 1M`) at the very start of a session. Claude Code sends `context_window.total_input_tokens` as `0` on a fresh session's first frame, and v0.9.1 only recomputed against the auto-compact window when that value was `> 0` — so the bar (and its `1M` label) fell back to the full window until the first API response landed, the exact `1M` flash issue #15 set out to remove. The recompute now fires whenever the field is present, including a genuine `0`, and falls back to the full window only when Claude Code omits the field entirely (older CC that predates `total_input_tokens`). jq now emits a `-1` sentinel for the missing field so a real `0` (fresh-session first frame) and an absent field no longer collapse to the same value (follow-up to https://github.com/Astro-Han/claude-pace/issues/15)
+- Add regression coverage for the present-zero first frame measuring against the compact window, plus an explicit guard that a missing field never relabels to the compact window
+
 ## 0.9.1
 
 - Track context against `CLAUDE_CODE_AUTO_COMPACT_WINDOW` when set. Since Claude Code 2.1.117 the stdin `context_window.context_window_size` is the model's full window (e.g. 1M for Opus 4.7) and `used_percentage` is measured against it — so on a context capped by `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (e.g. 400K) the bar filled against 1M and looked nearly empty right as auto-compaction was about to fire. When the env var is set and `context_window.total_input_tokens` (CC 2.1.132+) is available, the bar now measures used tokens ÷ the auto-compact window and relabels the size to that window (e.g. `15% 400K`), matching the desktop app's context indicator. Clamped to the real window and capped at 100%; falls back to full-window behavior when the env var is unset or token data is missing (early session). Line 1 keeps the model's full-window label (e.g. `(1M)`) because that reflects the model's capability, not the active budget (https://github.com/Astro-Han/claude-pace/issues/15)

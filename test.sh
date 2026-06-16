@@ -481,9 +481,10 @@ assert_aligned "| aligned with auto-compact relabel"
 OUTPUT=$(run_with_env "$ACW_HOME" "$ACW_RUNTIME" "$(acw_input ',"total_input_tokens":61829')")
 assert_line "no auto-compact env keeps full-window bar" 2 '6% 1M'
 
-# (c) token data missing → fall back to full window even with env set
+# (c) token data missing (old CC omits the field) → fall back to full window even with env set
 OUTPUT=$(run_acw 400000 "$(acw_input '')")
 assert_line "missing total_input_tokens falls back to full window" 2 '6% 1M'
+assert_line_not "missing total_input_tokens never relabels to compact window" 2 '400K'
 
 # (d) usage over the threshold caps at 100%
 OUTPUT=$(run_acw 400000 "$(acw_input ',"total_input_tokens":500000')")
@@ -492,6 +493,13 @@ assert_line "over-threshold usage caps at 100%" 2 '100% 400K'
 # (e) compact window larger than the real window clamps to the real window
 OUTPUT=$(run_acw 2000000 "$(acw_input ',"total_input_tokens":61829')")
 assert_line "compact window clamped to real window" 2 '6% 1M'
+
+# (f) token data present but zero (fresh-session first frame: CC sends the key
+#     with value 0, distinct from old CC omitting it) → measure against the cap
+#     from the start instead of flashing the full window. (issue #15 follow-up)
+OUTPUT=$(run_acw 400000 "$(acw_input ',"total_input_tokens":0')")
+assert_line "zero total_input_tokens still measures against compact window" 2 '0% 400K'
+assert_line "zero-token first frame keeps full-window (1M) model label" 1 'Opus 4\.7 \(1M\)'
 
 # ── Summary ──
 echo ""

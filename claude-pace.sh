@@ -123,7 +123,7 @@ IFS=$'\t' read -r MODEL DIR PCT CTX COST EFF HAS_RL U5 U7 R5 R7 TIN < <(
     (.rate_limits.seven_day.used_percentage//null|if type=="number" then floor else "--" end),
     (.rate_limits.five_hour.resets_at//0),
     (.rate_limits.seven_day.resets_at//0),
-    (.context_window.total_input_tokens//0|floor)]|@tsv' <<<"$input"
+    (if (.context_window.total_input_tokens|type)=="number" then (.context_window.total_input_tokens|floor) else -1 end)]|@tsv' <<<"$input"
 )
 case "${EFF:-default}" in low) EF='low' ;; high) EF='high' ;; xhigh) EF='xhigh' ;; max) EF='max' ;; *) EF='medium' ;; esac
 
@@ -131,10 +131,13 @@ case "${EFF:-default}" in low) EF='low' ;; high) EF='high' ;; xhigh) EF='xhigh' 
 # When CLAUDE_CODE_AUTO_COMPACT_WINDOW is set, compaction fires at that token
 # count, not the model's full window. Recompute PCT against it and relabel CTX
 # so the bar measures "distance to compaction", matching the desktop app's bar
-# (e.g. 49.8k / 400.0k). Falls back to the full window when unset or when token
-# data is missing (early session, before the first API response).
+# (e.g. 49.8k / 400.0k). The jq above emits TIN=-1 only when CC omits
+# total_input_tokens entirely (old CC); the ^[0-9]+$ test rejects that and falls
+# back to the full window. A present zero (fresh-session first frame, before the
+# first API response) passes, so the bar measures against the cap from the start
+# instead of flashing the full window while the env var is set.
 ACW="${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-0}"
-if [[ "$ACW" =~ ^[0-9]+$ ]] && ((ACW > 0)) && [[ "$TIN" =~ ^[0-9]+$ ]] && ((TIN > 0)); then
+if [[ "$ACW" =~ ^[0-9]+$ ]] && ((ACW > 0)) && [[ "$TIN" =~ ^[0-9]+$ ]]; then
   # Compaction can't exceed the real window; clamp so the label stays honest.
   ((CTX > 0 && ACW > CTX)) && ACW=$CTX
   PCT=$((TIN * 100 / ACW))
