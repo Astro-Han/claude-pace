@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.3
+
+- Stop stranding temp files in the cache directory. Cache records went through `mktemp` + `mv` for atomicity, but Claude Code cancels the status line script whenever a refresh arrives while it is still running, so every cancellation landing between the write and the `mv` left a uniquely named temp file behind permanently. On a slow machine that is the normal path, not an edge case: the reporter's `~/.cache/claude-pace/` had accumulated 3008 orphaned `claude-sl-tmp-*` files (1913 of them zero-byte) against 45 real cache records, and the directory size then fed back into `mktemp` and `stat` latency. Records are now written straight to their final path (https://github.com/Astro-Han/claude-pace/pull/17, diagnosis and field data by @volkanncicek)
+- Rationale for dropping atomicity rather than bounding the temp files: a cache record is one short line of git metadata with a 5s TTL, so a torn write is simply a cache miss — the reader already sanitizes non-numeric fields and the next run recomputes from git. Removing the temp file makes the orphans impossible instead of merely bounded, drops two subprocess spawns per refresh (worth ~400ms on Git Bash, where each spawn costs 180-300ms), and shrinks the cancellable window from "across two process launches" to a single builtin write
+- Refuse symlinked cache paths explicitly: `mv` used to replace the symlink itself, while `>` follows it. Covered by the existing Test 16, which fails without the guard
+- Existing `~/.cache/claude-pace/claude-sl-tmp-*` files from earlier versions are orphans, ignored by claude-pace, and safe to delete
+- Add regression coverage asserting the invariant directly — a cache write spawns neither `mktemp` nor `mv` — since a leftover-file check alone cannot catch this class of bug (a temp-file scheme also cleans up after itself whenever the run completes)
+
 ## 0.9.2
 
 - Fix the auto-compact bar briefly showing the model's full window (e.g. `0% 1M`) at the very start of a session. Claude Code sends `context_window.total_input_tokens` as `0` on a fresh session's first frame, and v0.9.1 only recomputed against the auto-compact window when that value was `> 0` — so the bar (and its `1M` label) fell back to the full window until the first API response landed, the exact `1M` flash issue #15 set out to remove. The recompute now fires whenever the field is present, including a genuine `0`, and falls back to the full window only when Claude Code omits the field entirely (older CC that predates `total_input_tokens`). jq now emits a `-1` sentinel for the missing field so a real `0` (fresh-session first frame) and an absent field no longer collapse to the same value (follow-up to https://github.com/Astro-Han/claude-pace/issues/15)

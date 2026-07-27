@@ -501,6 +501,77 @@ OUTPUT=$(run_acw 400000 "$(acw_input ',"total_input_tokens":0')")
 assert_line "zero total_input_tokens still measures against compact window" 2 '0% 400K'
 assert_line "zero-token first frame keeps full-window (1M) model label" 1 'Opus 4\.7 \(1M\)'
 
+# ── Test 30: Cache writes leave no temp files behind ──
+# Through v0.9.2 records went through mktemp + mv. Claude Code cancels the status
+# line script whenever a refresh arrives mid-run, so any cancellation between the
+# write and the mv stranded a uniquely named temp file permanently — one reporter
+# accumulated 3008 of them against 45 real records. Writes go straight to the
+# final path now, so the cache root must never hold anything else.
+echo "Test 30: cache writes leave no temp files"
+TMPF_HOME="$TEST_TMP/tmpfile-home"
+TMPF_RUNTIME="$TEST_TMP/tmpfile-runtime"
+TMPF_REPO="$TEST_TMP/tmpfile-repo"
+TMPF_CACHE_ROOT="$TMPF_RUNTIME/claude-pace"
+mkdir -p "$TMPF_HOME" "$TMPF_RUNTIME"
+init_test_repo "$TMPF_REPO"
+TMPF_INPUT='{"model":{"display_name":"Opus 4.6"},"workspace":{"project_dir":"'"$TMPF_REPO"'"},"context_window":{"used_percentage":20,"context_window_size":200000},"rate_limits":{"five_hour":{"used_percentage":30,"resets_at":'"$((NOW + 12000))"'},"seven_day":{"used_percentage":15,"resets_at":'"$((NOW + 500000))"'}}}'
+TMPF_RECORD="$TMPF_CACHE_ROOT/claude-sl-git-$(_hash_dir "$TMPF_REPO")"
+for _ in 1 2 3; do
+  run_side_effect_with_env "$TMPF_HOME" "$TMPF_RUNTIME" "$TMPF_INPUT"
+  # Expire the record so the next run takes the write path again rather than
+  # the 5s cache hit, which would make the leftover check vacuous.
+  [[ -f "$TMPF_RECORD" ]] && touch -t 200001010000 "$TMPF_RECORD"
+done
+# Non-vacuous guard: caching must actually have been enabled for this test to mean
+# anything. A disabled cache root would leave the directory empty and pass silently.
+if [[ -f "$TMPF_RECORD" ]]; then
+  PASS=$((PASS + 1))
+  echo "  PASS: cache record is written to its final path"
+else
+  FAIL=$((FAIL + 1))
+  echo "  FAIL: cache record is written to its final path"
+  echo "    missing: $TMPF_RECORD"
+fi
+TMPF_LEFTOVERS=$(find "$TMPF_CACHE_ROOT" -mindepth 1 ! -name 'claude-sl-git-*' 2>/dev/null)
+if [[ -z "$TMPF_LEFTOVERS" ]]; then
+  PASS=$((PASS + 1))
+  echo "  PASS: repeated writes leave no temp files in the cache root"
+else
+  FAIL=$((FAIL + 1))
+  echo "  FAIL: repeated writes leave no temp files in the cache root"
+  echo "    leftovers: $(printf '%s' "$TMPF_LEFTOVERS" | tr '\n' ' ')"
+fi
+# The leftover check above cannot catch a regression on its own: a temp-file
+# scheme also cleans up after itself whenever the run completes. What made the
+# orphans unbounded was the write ever touching a second path at all, so assert
+# the invariant directly — no mktemp, no mv. Stubs shim the real binaries and
+# record that they were reached.
+TMPF_STUB_BIN="$TEST_TMP/tmpfile-stubbin"
+TMPF_SPAWN_LOG="$TEST_TMP/tmpfile-spawns"
+mkdir -p "$TMPF_STUB_BIN"
+for _cmd in mktemp mv; do
+  _real=$(command -v "$_cmd")
+  cat >"$TMPF_STUB_BIN/$_cmd" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "$_cmd" >>"$TMPF_SPAWN_LOG"
+exec "$_real" "\$@"
+STUB
+  chmod +x "$TMPF_STUB_BIN/$_cmd"
+done
+: >"$TMPF_SPAWN_LOG"
+rm -f "$TMPF_RECORD"
+env HOME="$TMPF_HOME" XDG_RUNTIME_DIR="$TMPF_RUNTIME" USER=tester \
+  PATH="$TMPF_STUB_BIN:$PATH" bash claude-pace.sh >/dev/null 2>&1 <<<"$TMPF_INPUT"
+TMPF_SPAWNS=$(sort -u "$TMPF_SPAWN_LOG" | tr '\n' ' ' | sed 's/ $//')
+if [[ -z "$TMPF_SPAWNS" ]]; then
+  PASS=$((PASS + 1))
+  echo "  PASS: cache write spawns no mktemp/mv"
+else
+  FAIL=$((FAIL + 1))
+  echo "  FAIL: cache write spawns no mktemp/mv"
+  echo "    spawned: $TMPF_SPAWNS"
+fi
+
 # ── Summary ──
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

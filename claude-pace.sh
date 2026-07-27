@@ -52,18 +52,21 @@ _load_cache_record_file() {
   IFS= read -r line <"$path" || line=""
   _read_cache_record "$line"
 }
-# Writes one cache record atomically. If mktemp fails, the caller skips the
-# cache update and keeps serving live data for this run.
+# Writes one cache record straight to its final path. This used to go through a
+# mktemp file and an mv for atomicity, but Claude Code cancels the status line
+# script whenever a refresh arrives mid-run, so every cancellation between the
+# write and the mv stranded a uniquely named temp file forever — one reporter had
+# 3008 of them. Atomicity was never needed here: the record is one short line of
+# git data with a 5s TTL, so a torn write is just a cache miss that the reader
+# already sanitizes and the next run recomputes. Dropping the temp file also drops
+# two subprocess spawns per refresh and shrinks the cancellable window to a single
+# builtin. Symlinks must be refused explicitly: mv used to replace the link
+# itself, while > follows it.
 _write_cache_record() {
-  local path="$1" tmp dir
+  local path="$1" IFS="$SEP"
   shift
-  dir=${path%/*}
-  tmp=$(mktemp "${dir}/claude-sl-tmp-XXXXXX" 2>/dev/null || true)
-  [ -n "$tmp" ] || return 1
-  (
-    IFS="$SEP"
-    printf '%s\n' "$*"
-  ) >"$tmp" && mv "$tmp" "$path"
+  [ ! -L "$path" ] || return 1
+  printf '%s\n' "$*" >"$path" 2>/dev/null
 }
 # Computes remaining whole minutes until a future epoch. Missing or expired
 # timestamps return an empty string so callers can skip countdown formatting.
@@ -169,9 +172,10 @@ BAR=""
 for ((i = 0; i < F; i++)); do BAR+='█'; done
 for ((i = F; i < 10; i++)); do BAR+='░'; done
 
-# ── Git Info (5s cache, atomic write) ──
+# ── Git Info (5s disposable cache) ──
 # Cache key encodes DIR so concurrent sessions in different repos don't clash.
-# Atomic write: write to a temp file first, then mv to avoid partial reads.
+# Records are disposable: anything unreadable or torn falls through to the
+# sanitizing guards below and is recomputed on the next run.
 BR="" FC=0 AD=0 DL=0
 if [[ "$CACHE_OK" == "1" ]]; then
   GC="${_CD}/claude-sl-git-$(printf '%s' "$DIR" | { shasum 2>/dev/null || sha1sum; } | cut -c1-16)"
