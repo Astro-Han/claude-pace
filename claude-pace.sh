@@ -52,18 +52,25 @@ _load_cache_record_file() {
   IFS= read -r line <"$path" || line=""
   _read_cache_record "$line"
 }
-# Writes one cache record atomically. If mktemp fails, the caller skips the
-# cache update and keeps serving live data for this run.
+# Writes one cache record atomically. The temp file is named after its target rather
+# than randomly: Claude Code cancels the status line script when a refresh arrives
+# while it is still running, and a random name meant every cancellation between the
+# write and the mv left a file behind forever. A per-target name bounds that to one
+# stale file per cache path, which the next write overwrites. Safe because the cache
+# directory is already private to the user (mode 700, see _cache_dir_ok), so this is
+# not the shared-/tmp fixed-name hazard fixed in v0.7.1.
 _write_cache_record() {
-  local path="$1" tmp dir
+  local path="$1" tmp
   shift
-  dir=${path%/*}
-  tmp=$(mktemp "${dir}/claude-sl-tmp-XXXXXX" 2>/dev/null || true)
-  [ -n "$tmp" ] || return 1
-  (
+  tmp="${path}.tmp"
+  if (
     IFS="$SEP"
     printf '%s\n' "$*"
-  ) >"$tmp" && mv "$tmp" "$path"
+  ) >"$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$path" 2>/dev/null && return 0
+  fi
+  rm -f "$tmp" 2>/dev/null
+  return 1
 }
 # Computes remaining whole minutes until a future epoch. Missing or expired
 # timestamps return an empty string so callers can skip countdown formatting.
