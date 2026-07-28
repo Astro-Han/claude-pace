@@ -6,12 +6,16 @@
   },
   "metadata": {
     "description": "Claude Pace statusline plugin marketplace",
-    "version": "0.6.0"
+    "version": "0.9.4"
   },
   "plugins": [
     {
       "name": "claude-pace",
-      "source": "./",
+      "source": {
+        "source": "github",
+        "repo": "Astro-Han/claude-pace",
+        "ref": "v0.9.4"
+      },
       "description": "Lightweight statusline with quota pace tracking. Pure Bash + jq.",
       "category": "monitoring",
       "tags": [

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.4
+
+- Install from tagged releases instead of `main` on every channel (https://github.com/Astro-Han/claude-pace/issues/16). Until now both the manual `curl` and `/claude-pace:setup` fetched `raw.githubusercontent.com/.../main/claude-pace.sh`, so what you installed was whatever `main` happened to be at that second — not a version anyone could name, reproduce, or roll back to. Releases, tags and the npm package recorded versions but were never what shipped
+- `/claude-pace:setup` no longer makes network calls. It copies `${CLAUDE_PLUGIN_ROOT}/claude-pace.sh`, the script this plugin version already ships. The plugin was downloading a second copy of a file it was carrying — a package manager ignoring its own package, with the download resolving a different version than the install. There is deliberately no `curl` fallback: a missing bundled script means a broken plugin install, and the command stops and says so
+- Pin the marketplace entry to the release tag (`source: {source: github, repo, ref: vX.Y.Z}`). The previous `"source": "./"` served whatever the default branch held, so pinning `setup.md` alone would still have handed new installs the contents of `main`
+- Manual install now pulls `releases/latest/download/claude-pace.sh`, with `releases/download/vX.Y.Z/claude-pace.sh` documented for pinning to an exact version
+- Add the missing `-f` to the manual install `curl`. Without it a 404 exits 0 and writes the response body — the literal text `Not Found` — into `~/.claude/statusline.sh`, which the next line then `chmod +x`. With `-f` curl fails and leaves any existing install untouched. This was a live defect independent of the version-pinning issue
+- Release process now attaches `claude-pace.sh` to the GitHub release and bumps the marketplace `ref`, both as checklist steps rather than things to remember
+
+What this does and does not buy: bad code now has to pass through an explicit release action to reach users, which blocks accidental merges, unreviewed pushes, and force-pushes to `main` from shipping directly. It does not defend against anyone who can publish releases or against a compromised maintainer account, and a lightweight tag remains a movable ref.
+
 ## 0.9.3
 
 - Stop stranding temp files in the cache directory. Cache records went through `mktemp` + `mv` for atomicity, but Claude Code cancels the status line script whenever a refresh arrives while it is still running, so every cancellation landing between the write and the `mv` left a uniquely named temp file behind permanently. On a slow machine that is the normal path, not an edge case: the reporter's `~/.cache/claude-pace/` had accumulated 3008 orphaned `claude-sl-tmp-*` files (1913 of them zero-byte) against 45 real cache records, and the directory size then fed back into `mktemp` and `stat` latency. Records are now written straight to their final path (https://github.com/Astro-Han/claude-pace/pull/17, diagnosis and field data by @volkanncicek)

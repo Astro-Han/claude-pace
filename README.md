@@ -59,10 +59,15 @@ Restart Claude Code. Done.
 **Manual:**
 
 ```bash
-curl -o ~/.claude/statusline.sh \
-  https://raw.githubusercontent.com/Astro-Han/claude-pace/main/claude-pace.sh
+mkdir -p ~/.claude
+curl -fsSL -o ~/.claude/statusline.sh.new \
+  https://github.com/Astro-Han/claude-pace/releases/latest/download/claude-pace.sh
+mv ~/.claude/statusline.sh.new ~/.claude/statusline.sh
 chmod +x ~/.claude/statusline.sh
 ```
+
+This installs the latest release, not the current state of `main`. To pin an exact
+version, swap `latest/download` for `download/v0.9.4` (or any other tag).
 
 Add to `~/.claude/settings.json`:
 
@@ -81,9 +86,21 @@ To remove: delete the `statusLine` block from `~/.claude/settings.json`.
 
 ## Upgrade
 
-- **Plugin:** `/claude-pace:setup` (pulls the latest from GitHub)
+- **Plugin:**
+
+  ```
+  /plugin marketplace update claude-pace-marketplace
+  /plugin update claude-pace
+  /reload-plugins
+  /claude-pace:setup
+  ```
+
 - **npx:** `npx claude-pace@latest`
 - **Manual:** Re-run the `curl` command above.
+
+Every channel installs a tagged release. `/claude-pace:setup` copies the script the
+plugin ships rather than downloading one, so the plugin version you have is the
+version you run. Nothing installs from `main`.
 
 Release notifications: Watch this repo → Custom → Releases.
 
@@ -137,4 +154,4 @@ The entire tool is [one Bash file](claude-pace.sh). Read it before you install i
 
 MIT
 
-*Last updated: 2026-05-20 · v0.9.0*
+*Last updated: 2026-07-28 · v0.9.4*
