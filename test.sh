@@ -572,6 +572,13 @@ else
   echo "    spawned: $TMPF_SPAWNS"
 fi
 
+# ── Test 31: Windows backslash paths ──
+echo "Test 31: windows paths"
+OUTPUT=$(jq -n --arg d 'C:\Users\alice\projects\my-app' '{model:{display_name:"Opus"},workspace:{project_dir:$d}}' | bash claude-pace.sh 2>/dev/null | strip_ansi)
+assert_line "windows path shows project name" 1 '\| +my-app$'
+OUTPUT=$(jq -n --arg d 'C:\Users\alice\projects\my-app\.claude\worktrees\fix-auth' '{model:{display_name:"Opus"},workspace:{project_dir:$d}}' | bash claude-pace.sh 2>/dev/null | strip_ansi)
+assert_line "windows worktree shows repo/worktree" 1 '\| +my-app/fix-auth$'
+
 # ── Summary ──
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

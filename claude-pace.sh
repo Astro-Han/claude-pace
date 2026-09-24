@@ -117,7 +117,7 @@ _SETTINGS=$(cat "$HOME/.claude/settings.json" 2>/dev/null)
 echo "$_SETTINGS" | jq -e . >/dev/null 2>&1 || _SETTINGS='{}'
 IFS=$'\t' read -r MODEL DIR PCT CTX COST EFF HAS_RL U5 U7 R5 R7 TIN < <(
   jq -r --argjson cfg "$_SETTINGS" \
-    '[(.model.display_name//"?"),(.workspace.project_dir//"."),
+    '[(.model.display_name//"?"),(.workspace.project_dir//"."|gsub("\\\\";"/")),
     (.context_window.used_percentage//0|floor),(.context_window.context_window_size//0),
     (.cost.total_cost_usd//0),
     (.effort.level//$cfg.effortLevel//"default"),
