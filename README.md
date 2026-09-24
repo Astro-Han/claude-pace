@@ -67,7 +67,8 @@ chmod +x ~/.claude/statusline.sh
 ```
 
 This installs the latest release, not the current state of `main`. To pin an exact
-version, swap `latest/download` for `download/v0.9.4` (or any other tag).
+version, swap `latest/download` for `download/vX.Y.Z` with a tag from
+[Releases](https://github.com/Astro-Han/claude-pace/releases).
 
 Add to `~/.claude/settings.json`:
 
