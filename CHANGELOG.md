@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.5
+
+- Show the project name on Windows instead of a truncated, double-escaped full path (e.g. `C:\\Users\\alice\\proj…` → `my-app`). jq's `@tsv` escapes every backslash in `workspace.project_dir`, and both the project-name split and the worktree regex only match `/`. The path is now normalized to forward slashes inside jq; `git -C` accepts `C:/...`, so branch and diff stats keep working, and worktree detection now also matches Windows paths (https://github.com/Astro-Han/claude-pace/issues/18, diagnosis by @jestemkojak)
+
 ## 0.9.4
 
 - Install from tagged releases instead of `main` on every channel (https://github.com/Astro-Han/claude-pace/issues/16). Until now both the manual `curl` and `/claude-pace:setup` fetched `raw.githubusercontent.com/.../main/claude-pace.sh`, so what you installed was whatever `main` happened to be at that second — not a version anyone could name, reproduce, or roll back to. Releases, tags and the npm package recorded versions but were never what shipped
