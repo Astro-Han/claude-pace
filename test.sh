@@ -501,6 +501,27 @@ OUTPUT=$(run_acw 400000 "$(acw_input ',"total_input_tokens":0')")
 assert_line "zero total_input_tokens still measures against compact window" 2 '0% 400K'
 assert_line "zero-token first frame keeps full-window (1M) model label" 1 'Opus 4\.7 \(1M\)'
 
+# (g) settings autoCompactWindow (CC 2.1.311+): per-model entry matched against
+#     model.id across [1m]/dated/Bedrock spellings, beats top-level; env beats both
+acw_id_input() { # $1 = model.id
+  printf '{"model":{"id":"%s","display_name":"Opus 4.7 (1M context)"},"workspace":{"project_dir":"%s"},"context_window":{"used_percentage":6,"context_window_size":1000000,"total_input_tokens":61829}}' "$1" "$PWD"
+}
+mkdir -p "$ACW_HOME/.claude"
+echo '{"autoCompactWindow":800000,"modelSettings":{"claude-opus-4-7":{"autoCompactWindow":500000}}}' >"$ACW_HOME/.claude/settings.json"
+OUTPUT=$(run_with_env "$ACW_HOME" "$ACW_RUNTIME" "$(acw_id_input 'claude-opus-4-7[1m]')")
+assert_line "per-model settings window matches [1m] id" 2 '12% 500K'
+assert_line "settings window keeps full-window (1M) model label" 1 'Opus 4\.7 \(1M\)'
+OUTPUT=$(run_with_env "$ACW_HOME" "$ACW_RUNTIME" "$(acw_id_input 'us.anthropic.claude-opus-4-7-20260101-v1:0')")
+assert_line "per-model settings window matches Bedrock id" 2 '12% 500K'
+OUTPUT=$(run_with_env "$ACW_HOME" "$ACW_RUNTIME" "$(acw_id_input 'claude-sonnet-4-6')")
+assert_line "other model falls back to top-level settings window" 2 '7% 800K'
+OUTPUT=$(run_acw 400000 "$(acw_id_input 'claude-opus-4-7')")
+assert_line "env window beats settings window" 2 '15% 400K'
+echo '{"autoCompactWindow":800000,"modelSettings":{"claude-opus-4-7":{"autoCompactWindow":"auto"}}}' >"$ACW_HOME/.claude/settings.json"
+OUTPUT=$(run_with_env "$ACW_HOME" "$ACW_RUNTIME" "$(acw_id_input 'claude-opus-4-7')")
+assert_line "per-model \"auto\" overrides top-level and keeps full window" 2 '6% 1M'
+rm -f "$ACW_HOME/.claude/settings.json"
+
 # ── Test 30: Cache writes leave no temp files behind ──
 # Through v0.9.2 records went through mktemp + mv. Claude Code cancels the status
 # line script whenever a refresh arrives mid-run, so any cancellation between the

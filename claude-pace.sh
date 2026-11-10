@@ -108,16 +108,17 @@ done
 _stale() { [ ! -f "$1" ] || [ $((NOW - $(stat -f%m "$1" 2>/dev/null || stat -c%Y "$1" 2>/dev/null || echo 0))) -gt "$2" ]; }
 
 # ── Parse stdin + settings in one jq call ──
-# Fields: MODEL DIR PCT CTX COST EFF HAS_RL U5 U7 R5 R7 TIN
+# Fields: MODEL DIR PCT CTX COST EFF HAS_RL U5 U7 R5 R7 TIN ACW_CFG
 # Read settings into a shell var rather than process substitution so the jq
 # --argjson path works on Windows Git Bash (where /proc/<pid>/fd/N used by
 # <(...) is unavailable and --slurpfile silently fails, yielding empty fields).
 HAS_RL=0
 _SETTINGS=$(cat "$HOME/.claude/settings.json" 2>/dev/null)
 echo "$_SETTINGS" | jq -e . >/dev/null 2>&1 || _SETTINGS='{}'
-IFS=$'\t' read -r MODEL DIR PCT CTX COST EFF HAS_RL U5 U7 R5 R7 TIN < <(
+IFS=$'\t' read -r MODEL DIR PCT CTX COST EFF HAS_RL U5 U7 R5 R7 TIN ACW_CFG < <(
   jq -r --argjson cfg "$_SETTINGS" \
-    '[(.model.display_name//"?"),(.workspace.project_dir//"."|gsub("\\\\";"/")),
+    'def mkey: ascii_downcase|sub("\\[1m\\]$";"")|sub("^.*anthropic\\.";"")|sub("(@.*|-v[0-9]+(:[0-9]+)?)$";"")|sub("-[0-9]{8}$";"");
+    [(.model.display_name//"?"),(.workspace.project_dir//"."|gsub("\\\\";"/")),
     (.context_window.used_percentage//0|floor),(.context_window.context_window_size//0),
     (.cost.total_cost_usd//0),
     (.effort.level//$cfg.effortLevel//"default"),
@@ -126,20 +127,24 @@ IFS=$'\t' read -r MODEL DIR PCT CTX COST EFF HAS_RL U5 U7 R5 R7 TIN < <(
     (.rate_limits.seven_day.used_percentage//null|if type=="number" then floor else "--" end),
     (.rate_limits.five_hour.resets_at//0),
     (.rate_limits.seven_day.resets_at//0),
-    (if (.context_window.total_input_tokens|type)=="number" then (.context_window.total_input_tokens|floor) else -1 end)]|@tsv' <<<"$input"
+    (if (.context_window.total_input_tokens|type)=="number" then (.context_window.total_input_tokens|floor) else -1 end),
+    ((.model.id//""|mkey) as $id
+      | ([$cfg.modelSettings//{}|objects|to_entries[]|select((.key|mkey)==$id)|.value|objects|.autoCompactWindow|values][0]
+        // $cfg.autoCompactWindow) | if type=="number" then floor else 0 end)]|@tsv' <<<"$input"
 )
 case "${EFF:-default}" in low) EF='low' ;; high) EF='high' ;; xhigh) EF='xhigh' ;; max) EF='max' ;; *) EF='medium' ;; esac
 
 # ── Auto-compact window: track usage against the compaction threshold ──
-# When CLAUDE_CODE_AUTO_COMPACT_WINDOW is set, compaction fires at that token
-# count, not the model's full window. Recompute PCT against it and relabel CTX
-# so the bar measures "distance to compaction", matching the desktop app's bar
-# (e.g. 49.8k / 400.0k). The jq above emits TIN=-1 only when CC omits
+# When CLAUDE_CODE_AUTO_COMPACT_WINDOW or settings autoCompactWindow is set
+# (env wins; in settings a modelSettings entry beats top-level, as in CC),
+# compaction fires at that token count, not the model's full window. Recompute
+# PCT against it and relabel CTX so the bar measures "distance to compaction",
+# matching the desktop app's bar (e.g. 49.8k / 400.0k). The jq above emits TIN=-1 only when CC omits
 # total_input_tokens entirely (old CC); the ^[0-9]+$ test rejects that and falls
 # back to the full window. A present zero (fresh-session first frame, before the
 # first API response) passes, so the bar measures against the cap from the start
 # instead of flashing the full window while the env var is set.
-ACW="${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-0}"
+ACW="${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-$ACW_CFG}"
 if [[ "$ACW" =~ ^[0-9]+$ ]] && ((ACW > 0)) && [[ "$TIN" =~ ^[0-9]+$ ]]; then
   # Compaction can't exceed the real window; clamp so the label stays honest.
   ((CTX > 0 && ACW > CTX)) && ACW=$CTX
