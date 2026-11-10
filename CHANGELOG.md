@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.6
+
+- Honor the `autoCompactWindow` setting (Claude Code 2.1.311+, also written by `/autocompact`). The status line only read the `CLAUDE_CODE_AUTO_COMPACT_WINDOW` env var, so a cap set in `~/.claude/settings.json` left line 2 measuring against the full 1M window. It now resolves the window with Claude Code's precedence: env var, then the `modelSettings` entry for the current model (matched across `[1m]`, dated, Bedrock and Vertex spellings), then the top-level value. `"auto"` keeps the full window
+
 ## 0.9.5
 
 - Show the project name on Windows instead of a truncated, double-escaped full path (e.g. `C:\\Users\\alice\\proj…` → `my-app`). jq's `@tsv` escapes every backslash in `workspace.project_dir`, and both the project-name split and the worktree regex only match `/`. The path is now normalized to forward slashes inside jq; `git -C` accepts `C:/...`, so branch and diff stats keep working, and worktree detection now also matches Windows paths (https://github.com/Astro-Han/claude-pace/issues/18, diagnosis by @jestemkojak)
